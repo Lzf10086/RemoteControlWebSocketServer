@@ -3,98 +3,565 @@ const http = require("http");
 const WebSocket = require("ws");
 
 const app = express();
+
 const PORT = process.env.PORT || 10000;
+
 const server = http.createServer(app);
+
 const wss = new WebSocket.Server({
     server,
     path: "/ws"
 });
+
+// ============================================================
+// 手机连接
+// ============================================================
+
 let phoneA = null;
 let phoneB = null;
-app.get("/", (req, res) => {
-    res.send("RemoteControl WebSocket Server OK");
-});
-app.get("/status", (req, res) => {
-    res.json({
-        phoneA: phoneA !== null,
-        phoneB: phoneB !== null
-    });
-});
+
+// ============================================================
+// 配对信息
+// ============================================================
+
+let pairCode = null;
+
+// ============================================================
+// 生成 6 位验证码
+// ============================================================
+
+function generatePairCode() {
+
+    return Math.floor(
+        100000 + Math.random() * 900000
+    ).toString();
+}
+
+// ============================================================
+// 发送消息
+// ============================================================
+
 function send(ws, message) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+
+    if (
+        ws &&
+        ws.readyState === WebSocket.OPEN
+    ) {
+
         ws.send(message);
+
+        return true;
     }
+
+    return false;
 }
-function sendStatus() {
-    const message = JSON.stringify({
-        type: "STATUS",
-        phoneA: phoneA !== null,
-        phoneB: phoneB !== null
-    });
-    send(phoneA, message);
-    send(phoneB, message);
-}
-wss.on("connection", (ws, request) => {
-    const url = new URL(
-        request.url,
-        `http://${request.headers.host}`
+
+// ============================================================
+// 发送 JSON
+// ============================================================
+
+function sendJson(ws, data) {
+
+    send(
+        ws,
+        JSON.stringify(data)
     );
-    const role = url.searchParams.get("role");
-    console.log("WebSocket connected:", role);
-    if (role === "A") {
-        if (phoneA) {
-            phoneA.close();
+}
+
+// ============================================================
+// 发送状态
+// ============================================================
+
+function sendStatus() {
+
+    const message = {
+        type: "STATUS",
+
+        phoneA:
+            phoneA !== null,
+
+        phoneB:
+            phoneB !== null,
+
+        paired:
+            phoneA !== null &&
+            phoneB !== null &&
+            pairCode !== null
+    };
+
+    sendJson(phoneA, message);
+    sendJson(phoneB, message);
+}
+
+// ============================================================
+// 首页
+// ============================================================
+
+app.get("/", (req, res) => {
+
+    res.send(
+        "RemoteControl WebSocket Server OK"
+    );
+});
+
+// ============================================================
+// 状态
+// ============================================================
+
+app.get("/status", (req, res) => {
+
+    res.json({
+
+        phoneA:
+            phoneA !== null,
+
+        phoneB:
+            phoneB !== null,
+
+        paired:
+            phoneA !== null &&
+            phoneB !== null &&
+            pairCode !== null
+    });
+});
+
+// ============================================================
+// WebSocket 连接
+// ============================================================
+
+wss.on(
+    "connection",
+    (ws, request) => {
+
+        const url =
+            new URL(
+                request.url,
+                `http://${request.headers.host}`
+            );
+
+        const role =
+            url.searchParams.get("role");
+
+        console.log(
+            "WebSocket connected:",
+            role
+        );
+
+        // ====================================================
+        // 检查角色
+        // ====================================================
+
+        if (
+            role !== "A" &&
+            role !== "B"
+        ) {
+
+            console.log(
+                "Invalid role"
+            );
+
+            ws.close(
+                1008,
+                "Invalid role"
+            );
+
+            return;
         }
-        phoneA = ws;
-        ws.role = "A";
-        console.log("Phone A connected");
-    } else if (role === "B") {
-        if (phoneB) {
-            phoneB.close();
+
+        // ====================================================
+        // A 连接
+        // ====================================================
+
+        if (role === "A") {
+
+            // 如果已经有 A
+            if (phoneA) {
+
+                console.log(
+                    "Closing old Phone A"
+                );
+
+                phoneA.close();
+            }
+
+            phoneA = ws;
+
+            ws.role = "A";
+
+            ws.paired = false;
+
+            // 生成新的 6 位验证码
+            pairCode =
+                generatePairCode();
+
+            console.log(
+                "Phone A connected"
+            );
+
+            console.log(
+                "New pair code:",
+                pairCode
+            );
+
+            // 告诉 A 它的验证码
+            send(
+                ws,
+                `PAIR_CODE:${pairCode}`
+            );
+
+            sendStatus();
+
+            return;
         }
-        phoneB = ws;
-        ws.role = "B";
-        console.log("Phone B connected");
-    } else {
-        ws.close(1008, "Invalid role");
+
+        // ====================================================
+        // B 连接
+        // ====================================================
+
+        if (role === "B") {
+
+            // 如果已经有 B
+            if (phoneB) {
+
+                console.log(
+                    "Closing old Phone B"
+                );
+
+                phoneB.close();
+            }
+
+            phoneB = ws;
+
+            ws.role = "B";
+
+            ws.paired = false;
+
+            console.log(
+                "Phone B connected"
+            );
+
+            // B 此时还没有配对
+            send(
+                ws,
+                "WAITING_FOR_PAIR"
+            );
+
+            sendStatus();
+
+            // =================================================
+            // B 消息
+            // =================================================
+
+            ws.on(
+                "message",
+                (data) => {
+
+                    handleMessage(
+                        ws,
+                        data.toString()
+                    );
+                }
+            );
+
+            ws.on(
+                "close",
+                () => {
+
+                    handleDisconnect(
+                        ws
+                    );
+                }
+            );
+
+            ws.on(
+                "error",
+                (error) => {
+
+                    console.error(
+                        "WebSocket error:",
+                        error.message
+                    );
+                }
+            );
+
+            return;
+        }
+
+        // 理论上不会到这里
+    }
+);
+
+// ============================================================
+// 处理消息
+// ============================================================
+
+function handleMessage(
+    ws,
+    message
+) {
+
+    console.log(
+        `[${ws.role}] ${message.substring(0, 100)}`
+    );
+
+    // ========================================================
+    // A 消息
+    // ========================================================
+
+    if (ws.role === "A") {
+
+        // ----------------------------------------------------
+        // A 请求新的验证码
+        // ----------------------------------------------------
+
+        if (
+            message === "REQUEST_PAIR_CODE"
+        ) {
+
+            // 必须是当前 A
+            if (phoneA !== ws) {
+                return;
+            }
+
+            pairCode =
+                generatePairCode();
+
+            ws.paired = false;
+
+            send(
+                ws,
+                `PAIR_CODE:${pairCode}`
+            );
+
+            // 如果已有 B，解除配对
+            if (phoneB) {
+
+                phoneB.paired = false;
+
+                send(
+                    phoneB,
+                    "PAIR_RESET"
+                );
+            }
+
+            console.log(
+                "New pair code:",
+                pairCode
+            );
+
+            sendStatus();
+
+            return;
+        }
+
+        // ----------------------------------------------------
+        // A 的普通消息
+        // ----------------------------------------------------
+
+        if (
+            !ws.paired ||
+            !phoneB ||
+            !phoneB.paired
+        ) {
+
+            console.log(
+                "A not paired, message ignored"
+            );
+
+            return;
+        }
+
+        // A → B
+        send(
+            phoneB,
+            message
+        );
+
         return;
     }
-    sendStatus();
-    ws.on("message", (data) => {
-        const message = data.toString();
-        console.log(
-            `[${ws.role}] ${message.substring(0, 100)}`
-        );
-        if (ws.role === "A") {
-            // A → B
-            send(phoneB, message);
-        } else if (ws.role === "B") {
-            // B → A
-            send(phoneA, message);
+
+    // ========================================================
+    // B 消息
+    // ========================================================
+
+    if (ws.role === "B") {
+
+        // ----------------------------------------------------
+        // B 输入验证码
+        // ----------------------------------------------------
+
+        if (
+            message.startsWith("PAIR:")
+        ) {
+
+            const code =
+                message.substring(
+                    "PAIR:".length
+                ).trim();
+
+            console.log(
+                "B trying pair code:",
+                code
+            );
+
+            // 没有 A
+            if (!phoneA) {
+
+                send(
+                    ws,
+                    "PAIR_FAILED:A_NOT_CONNECTED"
+                );
+
+                return;
+            }
+
+            // 没有验证码
+            if (!pairCode) {
+
+                send(
+                    ws,
+                    "PAIR_FAILED:NO_PAIR_CODE"
+                );
+
+                return;
+            }
+
+            // 验证码错误
+            if (
+                code !== pairCode
+            ) {
+
+                console.log(
+                    "Invalid pair code"
+                );
+
+                send(
+                    ws,
+                    "PAIR_FAILED:INVALID_CODE"
+                );
+
+                return;
+            }
+
+            // =================================================
+            // 配对成功
+            // =================================================
+
+            phoneA.paired = true;
+            phoneB.paired = true;
+
+            ws.paired = true;
+
+            console.log(
+                "Phone A and Phone B paired successfully"
+            );
+
+            send(
+                phoneA,
+                "PAIR_SUCCESS"
+            );
+
+            send(
+                phoneB,
+                "PAIR_SUCCESS"
+            );
+
+            sendStatus();
+
+            return;
         }
-    });
-    ws.on("close", () => {
-        console.log(
-            "WebSocket closed:",
-            ws.role
-        );
-        if (ws.role === "A" && phoneA === ws) {
-            phoneA = null;
+
+        // ----------------------------------------------------
+        // B 尚未配对
+        // ----------------------------------------------------
+
+        if (
+            !ws.paired ||
+            !phoneA ||
+            !phoneA.paired
+        ) {
+
+            console.log(
+                "B not paired, message ignored"
+            );
+
+            return;
         }
-        if (ws.role === "B" && phoneB === ws) {
-            phoneB = null;
-        }
-        sendStatus();
-    });
-    ws.on("error", (error) => {
-        console.error(
-            "WebSocket error:",
-            error.message
+
+        // ----------------------------------------------------
+        // B → A
+        // ----------------------------------------------------
+
+        send(
+            phoneA,
+            message
         );
-    });
-});
-server.listen(PORT, "0.0.0.0", () => {
+
+        return;
+    }
+}
+
+// ============================================================
+// 断开连接
+// ============================================================
+
+function handleDisconnect(ws) {
+
     console.log(
-        `Server running on port ${PORT}`
+        "WebSocket closed:",
+        ws.role
     );
-});
+
+    // ========================================================
+    // A 断开
+    // ========================================================
+
+    if (
+        ws.role === "A" &&
+        phoneA === ws
+    ) {
+
+        phoneA = null;
+
+        pairCode = null;
+
+        // B 解除配对
+        if (phoneB) {
+
+            phoneB.paired = false;
+
+            send(
+                phoneB,
+                "PAIR_RESET"
+            );
+        }
+    }
+    // ========================================================
+    // B 断开
+    // ========================================================
+    if (
+        ws.role === "B" &&
+        phoneB === ws
+    ) {
+        phoneB = null;
+        // A 解除配对
+        if (phoneA) {
+
+            phoneA.paired = false;
+        }
+    }
+    sendStatus();
+}
+// ============================================================
+// 服务器启动
+// ============================================================
+server.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log(
+            `Server running on port ${PORT}`
+        );
+    }
+);
