@@ -171,48 +171,68 @@ wss.on(
         // ====================================================
         // A 连接
         // ====================================================
+if (role === "A") {
 
-        if (role === "A") {
+    if (phoneA) {
+        console.log("Closing old Phone A");
+        phoneA.close();
+    }
 
-            // 如果已经有 A
-            if (phoneA) {
+    phoneA = ws;
 
-                console.log(
-                    "Closing old Phone A"
-                );
+    ws.role = "A";
+    ws.paired = false;
 
-                phoneA.close();
-            }
+    pairCode = generatePairCode();
 
-            phoneA = ws;
+    console.log("Phone A connected");
+    console.log("New pair code:", pairCode);
 
-            ws.role = "A";
+    send(
+        ws,
+        `PAIR_CODE:${pairCode}`
+    );
 
-            ws.paired = false;
+    sendStatus();
 
-            // 生成新的 6 位验证码
-            pairCode =
-                generatePairCode();
+    // =================================================
+    // A 消息
+    // =================================================
 
-            console.log(
-                "Phone A connected"
-            );
+    ws.on("message", (data) => {
 
-            console.log(
-                "New pair code:",
-                pairCode
-            );
+        handleMessage(
+            ws,
+            data.toString()
+        );
 
-            // 告诉 A 它的验证码
-            send(
-                ws,
-                `PAIR_CODE:${pairCode}`
-            );
+    });
 
-            sendStatus();
+    // =================================================
+    // A 断开
+    // =================================================
 
-            return;
-        }
+    ws.on("close", () => {
+
+        handleDisconnect(ws);
+
+    });
+
+    // =================================================
+    // A 错误
+    // =================================================
+
+    ws.on("error", (error) => {
+
+        console.error(
+            "Phone A WebSocket error:",
+            error.message
+        );
+
+    });
+
+    return;
+}
 
         // ====================================================
         // B 连接
