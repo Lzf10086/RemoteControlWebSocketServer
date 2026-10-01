@@ -406,90 +406,145 @@ function handleMessage(
 
     if (ws.role === "B") {
 
-        // ----------------------------------------------------
-        // B 输入验证码
-        // ----------------------------------------------------
+// ----------------------------------------------------
+// B 输入验证码
+// ----------------------------------------------------
 
-        if (
-            message.startsWith("PAIR:")
-        ) {
+if (
+    message.startsWith("PAIR:")
+) {
 
-            const code =
-                message.substring(
-                    "PAIR:".length
-                ).trim();
+    const code =
+        message
+            .substring("PAIR:".length)
+            .trim();
 
-            console.log(
-                "B trying pair code:",
-                code
-            );
+    console.log(
+        "================================="
+    );
 
-            // 没有 A
-            if (!phoneA) {
+    console.log(
+        "B trying pair code:",
+        code
+    );
 
-                send(
-                    ws,
-                    "PAIR_FAILED:A_NOT_CONNECTED"
-                );
+    console.log(
+        "Current server pair code:",
+        pairCode
+    );
 
-                return;
-            }
+    console.log(
+        "Phone A exists:",
+        phoneA !== null
+    );
 
-            // 没有验证码
-            if (!pairCode) {
+    console.log(
+        "Phone B exists:",
+        phoneB !== null
+    );
 
-                send(
-                    ws,
-                    "PAIR_FAILED:NO_PAIR_CODE"
-                );
+    console.log(
+        "================================="
+    );
 
-                return;
-            }
+    // 没有 A
+    if (!phoneA) {
 
-            // 验证码错误
-            if (
-                code !== pairCode
-            ) {
+        console.log(
+            "PAIR FAILED: A_NOT_CONNECTED"
+        );
 
-                console.log(
-                    "Invalid pair code"
-                );
+        send(
+            ws,
+            "PAIR_FAILED:A_NOT_CONNECTED"
+        );
 
-                send(
-                    ws,
-                    "PAIR_FAILED:INVALID_CODE"
-                );
+        return;
+    }
 
-                return;
-            }
+    // 没有验证码
+    if (!pairCode) {
 
-            // =================================================
-            // 配对成功
-            // =================================================
+        console.log(
+            "PAIR FAILED: NO_PAIR_CODE"
+        );
 
-            phoneA.paired = true;
-            phoneB.paired = true;
+        send(
+            ws,
+            "PAIR_FAILED:NO_PAIR_CODE"
+        );
 
-            ws.paired = true;
+        return;
+    }
 
-            console.log(
-                "Phone A and Phone B paired successfully"
-            );
+    // 验证码错误
+    if (
+        code !== pairCode
+    ) {
 
-            send(
-                phoneA,
-                "PAIR_SUCCESS"
-            );
+        console.log(
+            "PAIR FAILED: INVALID_CODE"
+        );
 
-            send(
-                phoneB,
-                "PAIR_SUCCESS"
-            );
+        console.log(
+            "B code:",
+            code
+        );
 
-            sendStatus();
+        console.log(
+            "Server code:",
+            pairCode
+        );
 
-            return;
-        }
+        send(
+            ws,
+            "PAIR_FAILED:INVALID_CODE"
+        );
+
+        return;
+    }
+
+    // =================================================
+    // 配对成功
+    // =================================================
+
+    phoneA.paired = true;
+    phoneB.paired = true;
+    ws.paired = true;
+
+    console.log(
+        "================================="
+    );
+
+    console.log(
+        "PAIR SUCCESS"
+    );
+
+    console.log(
+        "Phone A and Phone B paired successfully"
+    );
+
+    console.log(
+        "================================="
+    );
+
+    // 告诉 A
+    send(
+        phoneA,
+        "PAIR_SUCCESS"
+    );
+
+    // 告诉 B
+    send(
+        phoneB,
+        "PAIR_SUCCESS"
+    );
+
+    // 状态
+    sendStatus();
+
+    return;
+}
 
         // ----------------------------------------------------
         // B 尚未配对
