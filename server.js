@@ -2,7 +2,6 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const app = express();
-
 const PORT = process.env.PORT || 10000;
 
 const server = http.createServer(app);
@@ -11,7 +10,6 @@ const wss = new WebSocket.Server({
     server,
     path: "/ws"
 });
-
 // ============================================================
 // 手机连接
 // ============================================================
