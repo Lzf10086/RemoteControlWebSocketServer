@@ -483,12 +483,10 @@ if (
 // A → B
 // ----------------------------------------------------
 
-if (
-    message.startsWith("FRAME:")
-) {
+if (message.startsWith("FRAME:")) {
 
     console.log(
-        "[A → B] FRAME received, length:",
+        "[A → B] FRAME:",
         message.length
     );
 
@@ -507,6 +505,30 @@ if (
 
     return;
 }
+
+// ----------------------------------------------------
+// A → B 普通消息
+// ----------------------------------------------------
+
+console.log(
+    "[A → B]",
+    message.substring(0, 100)
+);
+
+const success =
+    send(
+        phoneB,
+        message
+    );
+
+if (!success) {
+
+    console.log(
+        "[A → B] send failed"
+    );
+}
+
+return;
 
 // ----------------------------------------------------
 // A → B 普通控制消息
@@ -688,9 +710,47 @@ if (
             return;
         }
 
-        // ----------------------------------------------------
-        // B → A
-        // ----------------------------------------------------
+// ----------------------------------------------------
+// B → A
+// ----------------------------------------------------
+
+// B 请求结束连接
+if (message === "DISCONNECT_PAIR") {
+
+    console.log(
+        "B requested disconnect pair"
+    );
+
+    // 通知 A 解除配对
+    if (phoneA) {
+
+        phoneA.paired = false;
+
+        send(
+            phoneA,
+            "PAIR_RESET"
+        );
+    }
+
+    // B 自己解除配对
+    if (phoneB) {
+
+        phoneB.paired = false;
+
+        send(
+            phoneB,
+            "PAIR_RESET"
+        );
+    }
+
+    sendStatus();
+
+    return;
+}
+
+// ----------------------------------------------------
+// 普通 B → A 命令
+// ----------------------------------------------------
 
 console.log(
     "[B → A]",
