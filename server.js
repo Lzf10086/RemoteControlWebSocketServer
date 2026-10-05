@@ -311,100 +311,102 @@ wss.on(
         // ====================================================
         // B 连接
         // ====================================================
+if (role === "B") {
+    // 如果之前已经有 B，关闭旧连接
+    if (
+        phoneB &&
+        phoneB !== ws
+    ) {
 
-        if (role === "B") {
+        console.log(
+            "Closing old Phone B"
+        );
 
-            // 如果已经有正常的 B
-            if (
-                phoneB &&
-                phoneB.readyState === WebSocket.OPEN
-            ) {
+        try {
+            phoneB.close();
+        } catch (e) {
+            console.log(
+                "Error closing old Phone B:",
+                e.message
+            );
+        }
+    }
 
-                console.log(
-                    "Phone B already connected, rejecting new connection"
-                );
+    // 新 B 成为当前 B
+    phoneB = ws;
 
-                send(
-                    ws,
-                    "ALREADY_CONNECTED:B"
-                );
+    ws.role = "B";
+    ws.paired = false;
 
-                ws.close(
-                    1000,
-                    "Phone B already connected"
-                );
+    console.log(
+        "Phone B connected"
+    );
 
-                return;
-            }
+    // B 等待配对
+    send(
+        ws,
+        "WAITING_FOR_PAIR"
+    );
 
-            phoneB = ws;
+    sendStatus();
 
-            ws.role = "B";
-            ws.paired = false;
+    // =================================================
+    // B 消息
+    // =================================================
+
+    ws.on(
+        "message",
+        (data) => {
+
+            handleMessage(
+                ws,
+                data.toString()
+            );
+
+        }
+    );
+
+    // =================================================
+    // B 断开
+    // =================================================
+
+    ws.on(
+        "close",
+        (code, reason) => {
 
             console.log(
-                "Phone B connected"
+                "WebSocket closed: B",
+                "code=",
+                code,
+                "reason=",
+                reason.toString()
             );
 
-            send(
-                ws,
-                "WAITING_FOR_PAIR"
+            handleDisconnect(
+                ws
             );
 
-            sendStatus();
-
-            // =================================================
-            // B 消息
-            // =================================================
-
-            ws.on(
-                "message",
-                (data) => {
-
-                    handleMessage(
-                        ws,
-                        data.toString()
-                    );
-                }
-            );
-
-            // =================================================
-            // B 断开
-            // =================================================
-
-            ws.on(
-                "close",
-                (code, reason) => {
-
-                    console.log(
-                        "WebSocket closed: B",
-                        "code=",
-                        code,
-                        "reason=",
-                        reason.toString()
-                    );
-
-                    handleDisconnect(ws);
-                }
-            );
-
-            // =================================================
-            // B 错误
-            // =================================================
-
-            ws.on(
-                "error",
-                (error) => {
-
-                    console.error(
-                        "Phone B WebSocket error:",
-                        error.message
-                    );
-                }
-            );
-
-            return;
         }
+    );
+
+    // =================================================
+    // B 错误
+    // =================================================
+
+    ws.on(
+        "error",
+        (error) => {
+
+            console.error(
+                "Phone B WebSocket error:",
+                error.message
+            );
+
+        }
+    );
+
+    return;
+}
     }
 );
 
