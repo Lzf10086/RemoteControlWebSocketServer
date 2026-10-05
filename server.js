@@ -1,7 +1,9 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
+
 const app = express();
+
 const PORT = process.env.PORT || 10000;
 
 const server = http.createServer(app);
@@ -10,41 +12,43 @@ const wss = new WebSocket.Server({
     server,
     path: "/ws"
 });
+
 // ============================================================
 // 手机连接
 // ============================================================
 
 let phoneA = null;
 let phoneB = null;
+
+// ============================================================
+// 配对信息
+// ============================================================
+
+let pairCode = null;
+
+// ============================================================
+// 服务器状态
+// ============================================================
+
 setInterval(() => {
 
     console.log(
         "SERVER STATUS:",
         "A=",
         phoneA !== null,
-
         "B=",
         phoneB !== null,
-
         "A_OPEN=",
         phoneA?.readyState === WebSocket.OPEN,
-
         "B_OPEN=",
         phoneB?.readyState === WebSocket.OPEN,
-
         "A_PAIRED=",
         phoneA?.paired === true,
-
         "B_PAIRED=",
         phoneB?.paired === true
     );
 
 }, 30000);
-// ============================================================
-// 配对信息
-// ============================================================
-
-let pairCode = null;
 
 // ============================================================
 // 生成 6 位验证码
@@ -95,6 +99,7 @@ function sendJson(ws, data) {
 function sendStatus() {
 
     const message = {
+
         type: "STATUS",
 
         phoneA:
@@ -200,198 +205,208 @@ wss.on(
         // ====================================================
         // A 连接
         // ====================================================
-if (role === "A") {
 
-    // 如果当前已经有一个正常的 A 连接
-    if (
-        phoneA &&
-        phoneA.readyState === WebSocket.OPEN
-    ) {
+        if (role === "A") {
 
-        console.log(
-            "Phone A already connected, rejecting new connection"
-        );
+            // 如果已经有正常的 A
+            if (
+                phoneA &&
+                phoneA.readyState === WebSocket.OPEN
+            ) {
 
-        send(
-            ws,
-            "ALREADY_CONNECTED:A"
-        );
+                console.log(
+                    "Phone A already connected, rejecting new connection"
+                );
 
-        ws.close(
-            1000,
-            "Phone A already connected"
-        );
+                send(
+                    ws,
+                    "ALREADY_CONNECTED:A"
+                );
 
-        return;
-    }
+                ws.close(
+                    1000,
+                    "Phone A already connected"
+                );
 
-    phoneA = ws;
+                return;
+            }
 
-    ws.role = "A";
-    ws.paired = false;
+            phoneA = ws;
 
-    pairCode = generatePairCode();
+            ws.role = "A";
+            ws.paired = false;
 
-    console.log("Phone A connected");
-    console.log("New pair code:", pairCode);
+            pairCode =
+                generatePairCode();
 
-    send(
-        ws,
-        `PAIR_CODE:${pairCode}`
-    );
+            console.log(
+                "Phone A connected"
+            );
 
-    sendStatus();
+            console.log(
+                "New pair code:",
+                pairCode
+            );
 
-    // =================================================
-    // A 消息
-    // =================================================
+            send(
+                ws,
+                `PAIR_CODE:${pairCode}`
+            );
 
-    ws.on("message", (data) => {
+            sendStatus();
 
-        handleMessage(
-            ws,
-            data.toString()
-        );
+            // =================================================
+            // A 消息
+            // =================================================
 
-    });
+            ws.on(
+                "message",
+                (data) => {
 
-    // =================================================
-    // A 断开
-    // =================================================
+                    handleMessage(
+                        ws,
+                        data.toString()
+                    );
+                }
+            );
 
-    ws.on("close", (code, reason) => {
+            // =================================================
+            // A 断开
+            // =================================================
 
-        console.log(
-            "WebSocket closed: A",
-            "code=",
-            code,
-            "reason=",
-            reason.toString()
-        );
+            ws.on(
+                "close",
+                (code, reason) => {
 
-        handleDisconnect(ws);
+                    console.log(
+                        "WebSocket closed: A",
+                        "code=",
+                        code,
+                        "reason=",
+                        reason.toString()
+                    );
 
-    });
+                    handleDisconnect(ws);
+                }
+            );
 
-    // =================================================
-    // A 错误
-    // =================================================
+            // =================================================
+            // A 错误
+            // =================================================
 
-    ws.on("error", (error) => {
+            ws.on(
+                "error",
+                (error) => {
 
-        console.error(
-            "Phone A WebSocket error:",
-            error.message
-        );
+                    console.error(
+                        "Phone A WebSocket error:",
+                        error.message
+                    );
+                }
+            );
 
-    });
-
-    return;
-}
+            return;
+        }
 
         // ====================================================
         // B 连接
         // ====================================================
-if (role === "B") {
 
-    // 如果当前已经有一个正常的 B 连接
-    if (
-        phoneB &&
-        phoneB.readyState === WebSocket.OPEN
-    ) {
+        if (role === "B") {
 
-        console.log(
-            "Phone B already connected, rejecting new connection"
-        );
+            // 如果已经有正常的 B
+            if (
+                phoneB &&
+                phoneB.readyState === WebSocket.OPEN
+            ) {
 
-        send(
-            ws,
-            "ALREADY_CONNECTED:B"
-        );
+                console.log(
+                    "Phone B already connected, rejecting new connection"
+                );
 
-        ws.close(
-            1000,
-            "Phone B already connected"
-        );
+                send(
+                    ws,
+                    "ALREADY_CONNECTED:B"
+                );
 
-        return;
-    }
+                ws.close(
+                    1000,
+                    "Phone B already connected"
+                );
 
-    phoneB = ws;
+                return;
+            }
 
-    ws.role = "B";
+            phoneB = ws;
 
-    ws.paired = false;
-
-    console.log(
-        "Phone B connected"
-    );
-
-    // B 此时还没有配对
-    send(
-        ws,
-        "WAITING_FOR_PAIR"
-    );
-
-    sendStatus();
-
-    // =================================================
-    // B 消息
-    // =================================================
-
-    ws.on(
-        "message",
-        (data) => {
-
-            handleMessage(
-                ws,
-                data.toString()
-            );
-
-        }
-    );
-
-    // =================================================
-    // B 断开
-    // =================================================
-
-    ws.on(
-        "close",
-        (code, reason) => {
+            ws.role = "B";
+            ws.paired = false;
 
             console.log(
-                "WebSocket closed: B",
-                "code=",
-                code,
-                "reason=",
-                reason.toString()
+                "Phone B connected"
             );
 
-            handleDisconnect(
-                ws
+            send(
+                ws,
+                "WAITING_FOR_PAIR"
             );
 
+            sendStatus();
+
+            // =================================================
+            // B 消息
+            // =================================================
+
+            ws.on(
+                "message",
+                (data) => {
+
+                    handleMessage(
+                        ws,
+                        data.toString()
+                    );
+                }
+            );
+
+            // =================================================
+            // B 断开
+            // =================================================
+
+            ws.on(
+                "close",
+                (code, reason) => {
+
+                    console.log(
+                        "WebSocket closed: B",
+                        "code=",
+                        code,
+                        "reason=",
+                        reason.toString()
+                    );
+
+                    handleDisconnect(ws);
+                }
+            );
+
+            // =================================================
+            // B 错误
+            // =================================================
+
+            ws.on(
+                "error",
+                (error) => {
+
+                    console.error(
+                        "Phone B WebSocket error:",
+                        error.message
+                    );
+                }
+            );
+
+            return;
         }
-    );
-
-    // =================================================
-    // B 错误
-    // =================================================
-
-    ws.on(
-        "error",
-        (error) => {
-
-            console.error(
-                "Phone B WebSocket error:",
-                error.message
-            );
-
-        }
-    );
-
-    return;
-}
+    }
+);
 
 // ============================================================
 // 处理消息
@@ -420,7 +435,6 @@ function handleMessage(
             message === "REQUEST_PAIR_CODE"
         ) {
 
-            // 必须是当前 A
             if (phoneA !== ws) {
                 return;
             }
@@ -435,7 +449,6 @@ function handleMessage(
                 `PAIR_CODE:${pairCode}`
             );
 
-            // 如果已有 B，解除配对
             if (phoneB) {
 
                 phoneB.paired = false;
@@ -457,92 +470,74 @@ function handleMessage(
         }
 
         // ----------------------------------------------------
-        // A 的普通消息
+        // A 尚未配对
         // ----------------------------------------------------
 
-// ----------------------------------------------------
-// A 尚未配对
-// ----------------------------------------------------
+        if (
+            !ws.paired ||
+            !phoneB ||
+            !phoneB.paired
+        ) {
 
-if (
-    !ws.paired ||
-    !phoneB ||
-    !phoneB.paired
-) {
+            console.log(
+                "A not paired, message ignored"
+            );
 
-    console.log(
-        "A not paired, message ignored"
-    );
+            return;
+        }
 
-    return;
-}
+        // ----------------------------------------------------
+        // A → B：屏幕帧
+        // ----------------------------------------------------
 
-// ----------------------------------------------------
-// A → B
-// ----------------------------------------------------
+        if (
+            message.startsWith("FRAME:")
+        ) {
 
-if (message.startsWith("FRAME:")) {
+            console.log(
+                "[A → B] FRAME:",
+                message.length
+            );
 
-    console.log(
-        "[A → B] FRAME:",
-        message.length
-    );
+            const success =
+                send(
+                    phoneB,
+                    message
+                );
 
-    const success =
-        send(
-            phoneB,
-            message
-        );
+            if (!success) {
 
-    if (!success) {
+                console.log(
+                    "[A → B] FRAME send failed"
+                );
+            }
+
+            return;
+        }
+
+        // ----------------------------------------------------
+        // A → B：普通消息
+        // ----------------------------------------------------
 
         console.log(
-            "[A → B] FRAME send failed"
+            "[A → B]",
+            message.substring(0, 100)
         );
-    }
 
-    return;
-}
+        const success =
+            send(
+                phoneB,
+                message
+            );
 
-// ----------------------------------------------------
-// A → B 普通消息
-// ----------------------------------------------------
+        if (!success) {
 
-console.log(
-    "[A → B]",
-    message.substring(0, 100)
-);
+            console.log(
+                "[A → B] send failed"
+            );
+        }
 
-const success =
-    send(
-        phoneB,
-        message
-    );
-
-if (!success) {
-
-    console.log(
-        "[A → B] send failed"
-    );
-}
-
-return;
-
-// ----------------------------------------------------
-// A → B 普通控制消息
-// ----------------------------------------------------
-
-console.log(
-    "[A → B]",
-    message.substring(0, 100)
-);
-
-send(
-    phoneB,
-    message
-);
-
-return;
+        return;
     }
 
     // ========================================================
@@ -551,145 +546,151 @@ return;
 
     if (ws.role === "B") {
 
-// ----------------------------------------------------
-// B 输入验证码
-// ----------------------------------------------------
+        // ----------------------------------------------------
+        // B 输入验证码
+        // ----------------------------------------------------
 
-if (
-    message.startsWith("PAIR:")
-) {
+        if (
+            message.startsWith("PAIR:")
+        ) {
 
-    const code =
-        message
-            .substring("PAIR:".length)
-            .trim();
+            const code =
+                message
+                    .substring("PAIR:".length)
+                    .trim();
 
-    console.log(
-        "================================="
-    );
+            console.log(
+                "================================="
+            );
 
-    console.log(
-        "B trying pair code:",
-        code
-    );
+            console.log(
+                "B trying pair code:",
+                code
+            );
 
-    console.log(
-        "Current server pair code:",
-        pairCode
-    );
+            console.log(
+                "Current server pair code:",
+                pairCode
+            );
 
-    console.log(
-        "Phone A exists:",
-        phoneA !== null
-    );
+            console.log(
+                "Phone A exists:",
+                phoneA !== null
+            );
 
-    console.log(
-        "Phone B exists:",
-        phoneB !== null
-    );
+            console.log(
+                "Phone B exists:",
+                phoneB !== null
+            );
 
-    console.log(
-        "================================="
-    );
+            console.log(
+                "================================="
+            );
 
-    // 没有 A
-    if (!phoneA) {
+            // ------------------------------------------------
+            // 没有 A
+            // ------------------------------------------------
 
-        console.log(
-            "PAIR FAILED: A_NOT_CONNECTED"
-        );
+            if (!phoneA) {
 
-        send(
-            ws,
-            "PAIR_FAILED:A_NOT_CONNECTED"
-        );
+                console.log(
+                    "PAIR FAILED: A_NOT_CONNECTED"
+                );
 
-        return;
-    }
+                send(
+                    ws,
+                    "PAIR_FAILED:A_NOT_CONNECTED"
+                );
 
-    // 没有验证码
-    if (!pairCode) {
+                return;
+            }
 
-        console.log(
-            "PAIR FAILED: NO_PAIR_CODE"
-        );
+            // ------------------------------------------------
+            // 没有验证码
+            // ------------------------------------------------
 
-        send(
-            ws,
-            "PAIR_FAILED:NO_PAIR_CODE"
-        );
+            if (!pairCode) {
 
-        return;
-    }
+                console.log(
+                    "PAIR FAILED: NO_PAIR_CODE"
+                );
 
-    // 验证码错误
-    if (
-        code !== pairCode
-    ) {
+                send(
+                    ws,
+                    "PAIR_FAILED:NO_PAIR_CODE"
+                );
 
-        console.log(
-            "PAIR FAILED: INVALID_CODE"
-        );
+                return;
+            }
 
-        console.log(
-            "B code:",
-            code
-        );
+            // ------------------------------------------------
+            // 验证码错误
+            // ------------------------------------------------
 
-        console.log(
-            "Server code:",
-            pairCode
-        );
+            if (
+                code !== pairCode
+            ) {
 
-        send(
-            ws,
-            "PAIR_FAILED:INVALID_CODE"
-        );
+                console.log(
+                    "PAIR FAILED: INVALID_CODE"
+                );
 
-        return;
-    }
+                console.log(
+                    "B code:",
+                    code
+                );
 
-    // =================================================
-    // 配对成功
-    // =================================================
+                console.log(
+                    "Server code:",
+                    pairCode
+                );
 
-    phoneA.paired = true;
-    phoneB.paired = true;
-    ws.paired = true;
+                send(
+                    ws,
+                    "PAIR_FAILED:INVALID_CODE"
+                );
 
-    console.log(
-        "================================="
-    );
+                return;
+            }
 
-    console.log(
-        "PAIR SUCCESS"
-    );
+            // ------------------------------------------------
+            // 配对成功
+            // ------------------------------------------------
 
-    console.log(
-        "Phone A and Phone B paired successfully"
-    );
+            phoneA.paired = true;
+            phoneB.paired = true;
+            ws.paired = true;
 
-    console.log(
-        "================================="
-    );
+            console.log(
+                "================================="
+            );
 
-    // 告诉 A
-    send(
-        phoneA,
-        "PAIR_SUCCESS"
-    );
+            console.log(
+                "PAIR SUCCESS"
+            );
 
-    // 告诉 B
-    send(
-        phoneB,
-        "PAIR_SUCCESS"
-    );
+            console.log(
+                "Phone A and Phone B paired successfully"
+            );
 
-    // 状态
-    sendStatus();
+            console.log(
+                "================================="
+            );
 
-    return;
-}
+            send(
+                phoneA,
+                "PAIR_SUCCESS"
+            );
+
+            send(
+                phoneB,
+                "PAIR_SUCCESS"
+            );
+
+            sendStatus();
+
+            return;
+        }
 
         // ----------------------------------------------------
         // B 尚未配对
@@ -708,72 +709,75 @@ if (
             return;
         }
 
-// ----------------------------------------------------
-// B → A
-// ----------------------------------------------------
+        // ----------------------------------------------------
+        // B 请求结束连接
+        // ----------------------------------------------------
 
-// B 请求结束连接
-if (message === "DISCONNECT_PAIR") {
+        if (
+            message === "DISCONNECT_PAIR"
+        ) {
 
-    console.log(
-        "B requested disconnect pair"
-    );
+            console.log(
+                "B requested disconnect pair"
+            );
 
-    // 通知 A 解除配对
-    if (phoneA) {
+            // A 解除配对
+            if (phoneA) {
 
-        phoneA.paired = false;
+                phoneA.paired = false;
 
-        send(
-            phoneA,
-            "PAIR_RESET"
+                send(
+                    phoneA,
+                    "PAIR_RESET"
+                );
+            }
+
+            // B 解除配对
+            if (phoneB) {
+
+                phoneB.paired = false;
+
+                send(
+                    phoneB,
+                    "PAIR_RESET"
+                );
+            }
+
+            sendStatus();
+
+            return;
+        }
+
+        // ----------------------------------------------------
+        // B → A 普通控制命令
+        // ----------------------------------------------------
+
+        console.log(
+            "[B → A]",
+            message.substring(0, 100)
         );
+
+        const success =
+            send(
+                phoneA,
+                message
+            );
+
+        if (!success) {
+
+            console.log(
+                "[B → A] send failed"
+            );
+        }
+
+        return;
     }
-
-    // B 自己解除配对
-    if (phoneB) {
-
-        phoneB.paired = false;
-
-        send(
-            phoneB,
-            "PAIR_RESET"
-        );
-    }
-
-    sendStatus();
-
-    return;
-}
-
-// ----------------------------------------------------
-// 普通 B → A 命令
-// ----------------------------------------------------
-
-console.log(
-    "[B → A]",
-    message.substring(0, 100)
-);
-
-const success =
-    send(
-        phoneA,
-        message
-    );
-
-if (!success) {
-
-    console.log(
-        "[B → A] send failed"
-    );
-}
-
-return;
 }
 
 // ============================================================
 // 断开连接
 // ============================================================
+
 function handleDisconnect(ws) {
 
     console.log(
@@ -794,9 +798,9 @@ function handleDisconnect(ws) {
         "================================="
     );
 
-    // =================================================
+    // ========================================================
     // A 断开
-    // =================================================
+    // ========================================================
 
     if (
         ws.role === "A" &&
@@ -811,7 +815,6 @@ function handleDisconnect(ws) {
 
         pairCode = null;
 
-        // B 解除配对
         if (phoneB) {
 
             phoneB.paired = false;
@@ -823,9 +826,9 @@ function handleDisconnect(ws) {
         }
     }
 
-    // =================================================
+    // ========================================================
     // B 断开
-    // =================================================
+    // ========================================================
 
     if (
         ws.role === "B" &&
@@ -838,7 +841,6 @@ function handleDisconnect(ws) {
 
         phoneB = null;
 
-        // A 解除配对
         if (phoneA) {
 
             phoneA.paired = false;
@@ -852,9 +854,11 @@ function handleDisconnect(ws) {
 
     sendStatus();
 }
+
 // ============================================================
 // 服务器启动
 // ============================================================
+
 server.listen(
     PORT,
     "0.0.0.0",
