@@ -19,7 +19,30 @@ const wss = new WebSocket.Server({
 
 let phoneA = null;
 let phoneB = null;
+setInterval(() => {
 
+    console.log(
+        "SERVER STATUS:",
+        "A=",
+        phoneA !== null,
+
+        "B=",
+        phoneB !== null,
+
+        "A_OPEN=",
+        phoneA?.readyState === WebSocket.OPEN,
+
+        "B_OPEN=",
+        phoneB?.readyState === WebSocket.OPEN,
+
+        "A_PAIRED=",
+        phoneA?.paired === true,
+
+        "B_PAIRED=",
+        phoneB?.paired === true
+    );
+
+}, 30000);
 // ============================================================
 // 配对信息
 // ============================================================
@@ -78,15 +101,18 @@ function sendStatus() {
         type: "STATUS",
 
         phoneA:
-            phoneA !== null,
+            phoneA !== null &&
+            phoneA.readyState === WebSocket.OPEN,
 
         phoneB:
-            phoneB !== null,
+            phoneB !== null &&
+            phoneB.readyState === WebSocket.OPEN,
 
         paired:
             phoneA !== null &&
             phoneB !== null &&
-            pairCode !== null
+            phoneA.paired === true &&
+            phoneB.paired === true
     };
 
     sendJson(phoneA, message);
@@ -113,14 +139,20 @@ app.get("/status", (req, res) => {
     res.json({
 
         phoneA:
-            phoneA !== null,
+            phoneA !== null &&
+            phoneA.readyState === WebSocket.OPEN,
 
         phoneB:
-            phoneB !== null,
+            phoneB !== null &&
+            phoneB.readyState === WebSocket.OPEN,
 
         paired:
             phoneA !== null &&
             phoneB !== null &&
+            phoneA.paired === true &&
+            phoneB.paired === true,
+
+        pairCodeExists:
             pairCode !== null
     });
 });
@@ -173,9 +205,27 @@ wss.on(
         // ====================================================
 if (role === "A") {
 
-    if (phoneA) {
-        console.log("Closing old Phone A");
-        phoneA.close();
+    // 如果当前已经有一个正常的 A 连接
+    if (
+        phoneA &&
+        phoneA.readyState === WebSocket.OPEN
+    ) {
+
+        console.log(
+            "Phone A already connected, rejecting new connection"
+        );
+
+        send(
+            ws,
+            "ALREADY_CONNECTED:A"
+        );
+
+        ws.close(
+            1000,
+            "Phone A already connected"
+        );
+
+        return;
     }
 
     phoneA = ws;
@@ -212,7 +262,15 @@ if (role === "A") {
     // A 断开
     // =================================================
 
-    ws.on("close", () => {
+    ws.on("close", (code, reason) => {
+
+        console.log(
+            "WebSocket closed: A",
+            "code=",
+            code,
+            "reason=",
+            reason.toString()
+        );
 
         handleDisconnect(ws);
 
@@ -237,79 +295,106 @@ if (role === "A") {
         // ====================================================
         // B 连接
         // ====================================================
+if (role === "B") {
 
-        if (role === "B") {
+    // 如果当前已经有一个正常的 B 连接
+    if (
+        phoneB &&
+        phoneB.readyState === WebSocket.OPEN
+    ) {
 
-            // 如果已经有 B
-            if (phoneB) {
+        console.log(
+            "Phone B already connected, rejecting new connection"
+        );
 
-                console.log(
-                    "Closing old Phone B"
-                );
+        send(
+            ws,
+            "ALREADY_CONNECTED:B"
+        );
 
-                phoneB.close();
-            }
+        ws.close(
+            1000,
+            "Phone B already connected"
+        );
 
-            phoneB = ws;
+        return;
+    }
 
-            ws.role = "B";
+    phoneB = ws;
 
-            ws.paired = false;
+    ws.role = "B";
+
+    ws.paired = false;
+
+    console.log(
+        "Phone B connected"
+    );
+
+    // B 此时还没有配对
+    send(
+        ws,
+        "WAITING_FOR_PAIR"
+    );
+
+    sendStatus();
+
+    // =================================================
+    // B 消息
+    // =================================================
+
+    ws.on(
+        "message",
+        (data) => {
+
+            handleMessage(
+                ws,
+                data.toString()
+            );
+
+        }
+    );
+
+    // =================================================
+    // B 断开
+    // =================================================
+
+    ws.on(
+        "close",
+        (code, reason) => {
 
             console.log(
-                "Phone B connected"
+                "WebSocket closed: B",
+                "code=",
+                code,
+                "reason=",
+                reason.toString()
             );
 
-            // B 此时还没有配对
-            send(
-                ws,
-                "WAITING_FOR_PAIR"
+            handleDisconnect(
+                ws
             );
 
-            sendStatus();
-
-            // =================================================
-            // B 消息
-            // =================================================
-
-            ws.on(
-                "message",
-                (data) => {
-
-                    handleMessage(
-                        ws,
-                        data.toString()
-                    );
-                }
-            );
-
-            ws.on(
-                "close",
-                () => {
-
-                    handleDisconnect(
-                        ws
-                    );
-                }
-            );
-
-            ws.on(
-                "error",
-                (error) => {
-
-                    console.error(
-                        "WebSocket error:",
-                        error.message
-                    );
-                }
-            );
-
-            return;
         }
+    );
 
-        // 理论上不会到这里
-    }
-);
+    // =================================================
+    // B 错误
+    // =================================================
+
+    ws.on(
+        "error",
+        (error) => {
+
+            console.error(
+                "Phone B WebSocket error:",
+                error.message
+            );
+
+        }
+    );
+
+    return;
+}
 
 // ============================================================
 // 处理消息
@@ -378,26 +463,67 @@ function handleMessage(
         // A 的普通消息
         // ----------------------------------------------------
 
-        if (
-            !ws.paired ||
-            !phoneB ||
-            !phoneB.paired
-        ) {
+// ----------------------------------------------------
+// A 尚未配对
+// ----------------------------------------------------
 
-            console.log(
-                "A not paired, message ignored"
-            );
+if (
+    !ws.paired ||
+    !phoneB ||
+    !phoneB.paired
+) {
 
-            return;
-        }
+    console.log(
+        "A not paired, message ignored"
+    );
 
-        // A → B
+    return;
+}
+
+// ----------------------------------------------------
+// A → B
+// ----------------------------------------------------
+
+if (
+    message.startsWith("FRAME:")
+) {
+
+    console.log(
+        "[A → B] FRAME received, length:",
+        message.length
+    );
+
+    const success =
         send(
             phoneB,
             message
         );
 
-        return;
+    if (!success) {
+
+        console.log(
+            "[A → B] FRAME send failed"
+        );
+    }
+
+    return;
+}
+
+// ----------------------------------------------------
+// A → B 普通控制消息
+// ----------------------------------------------------
+
+console.log(
+    "[A → B]",
+    message.substring(0, 100)
+);
+
+send(
+    phoneB,
+    message
+);
+
+return;
     }
 
     // ========================================================
@@ -567,34 +693,62 @@ if (
         // B → A
         // ----------------------------------------------------
 
-        send(
-            phoneA,
-            message
-        );
+console.log(
+    "[B → A]",
+    message.substring(0, 100)
+);
 
-        return;
-    }
+const success =
+    send(
+        phoneA,
+        message
+    );
+
+if (!success) {
+
+    console.log(
+        "[B → A] send failed"
+    );
+}
+
+return;
 }
 
 // ============================================================
 // 断开连接
 // ============================================================
-
 function handleDisconnect(ws) {
 
     console.log(
-        "WebSocket closed:",
+        "================================="
+    );
+
+    console.log(
+        "Handling disconnect:",
         ws.role
     );
 
-    // ========================================================
+    console.log(
+        "ws.paired:",
+        ws.paired
+    );
+
+    console.log(
+        "================================="
+    );
+
+    // =================================================
     // A 断开
-    // ========================================================
+    // =================================================
 
     if (
         ws.role === "A" &&
         phoneA === ws
     ) {
+
+        console.log(
+            "Removing Phone A"
+        );
 
         phoneA = null;
 
@@ -611,20 +765,34 @@ function handleDisconnect(ws) {
             );
         }
     }
-    // ========================================================
+
+    // =================================================
     // B 断开
-    // ========================================================
+    // =================================================
+
     if (
         ws.role === "B" &&
         phoneB === ws
     ) {
+
+        console.log(
+            "Removing Phone B"
+        );
+
         phoneB = null;
+
         // A 解除配对
         if (phoneA) {
 
             phoneA.paired = false;
+
+            send(
+                phoneA,
+                "B_DISCONNECTED"
+            );
         }
     }
+
     sendStatus();
 }
 // ============================================================
