@@ -1,7 +1,6 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-
 const app = express();
 
 const PORT = process.env.PORT || 10000;
